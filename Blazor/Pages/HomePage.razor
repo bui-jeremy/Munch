@@ -1,0 +1,63 @@
+@page "/home"
+@inject NavigationManager NavigationManager
+@inject NavigationManager Navigation
+@inject UserService UserService
+@inject FirestoreService Db
+@inject IJSRuntime JS
+
+<link href="css/home.css" rel="stylesheet">
+
+<div class="container">
+    <div class="content-wrapper">
+        <div class="welcome-message">
+            <h1>Welcome to Munch</h1>
+            <p>Tap your way towards delicious discoveries!</p>
+            <button class="swipe-animation" @onclick="NavigateToSwipePage">Start Selecting <span>&gt;&gt;</span></button>
+        </div>
+        <div class="profile-card">
+            <div class="card-body">
+                <div class="profile-image mb-3">
+                    <img src="https://img.icons8.com/bubbles/100/000000/user.png" class="img-radius" alt="User Profile Image">
+                </div>
+                <h5 class="user-name text-center">Hi, @CurrentUser.Name!</h5>
+                <div class="most-visited">
+                    <h6 class="mb-2 text-center">Most Matched Restaurants:</h6>
+                    <ul class="list-unstyled text-center">
+                        @foreach (var restaurant in CurrentUser.LikedRestaurants.OrderByDescending(r => r.count).Take(4))
+                        {
+                            <li>@restaurant.name - @restaurant.count times</li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    <img src="https://www.pngplay.com/wp-content/uploads/2/Burger-Transparent-Images.png" class="burger-img" alt="Gourmet Burger" />
+</div>
+
+@code {
+    User CurrentUser = new User();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if user is logged in
+        if (!UserService.IsLoggedIn) {
+            Navigation.NavigateTo("/");
+        }
+
+        try
+        {
+            string id = UserService.Id;
+            CurrentUser = await Db.Get<User>(id);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);           
+        }
+    }
+
+    private void NavigateToSwipePage()
+    {
+        NavigationManager.NavigateTo("/swipe");
+    }
+}

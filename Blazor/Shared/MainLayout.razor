@@ -1,0 +1,34 @@
+﻿@inherits LayoutComponentBase
+@inject UserService UserService
+
+<PageTitle>Munch</PageTitle>
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        UserService.OnChange += () => InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdateUI()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        UserService.OnChange -= () => InvokeAsync(StateHasChanged);
+    }
+
+}

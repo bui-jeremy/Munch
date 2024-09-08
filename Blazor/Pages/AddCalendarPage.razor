@@ -1,0 +1,182 @@
+@page "/add-calendar"
+@using Google.Apis.Auth.OAuth2
+@using Google.Apis.Calendar.v3
+@using Google.Apis.Calendar.v3.Data
+@using Google.Apis.Services
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.WebUtilities
+@using System.Timers
+@inject NavigationManager Navigation
+@inject ScrapingService ScrapingService
+@inject UserService UserService
+
+<link href="css/addtocalendar.css" rel="stylesheet">
+
+<h3>Add to Calendar</h3>
+
+@if (!string.IsNullOrWhiteSpace(name))
+{
+    <div>
+        <img src="@imageUrl" alt="Restaurant Image" />
+        <h4>@name</h4>
+        <p>Phone: @phone</p>
+        <p>Rating: @rating</p>
+        <p>Location: @address</p>
+        <p>Categories: @categories</p>
+        <p>Price: @price</p>
+
+        @* This condition checks if there are scraping results available, displaying relevant URLs if present. *@
+        @if (scrapeResults != null)
+        {
+            if (scrapeResults.ReservationURL != null)
+            {
+                <p>Make a reservation <a href="@scrapeResults.ReservationURL" target="_blank">here</a></p>
+            }
+
+            if (scrapeResults.OrderURL != null)
+            {
+                <p>Order online <a href="@scrapeResults.OrderURL" target="_blank">here</a></p>
+            }
+
+            if (scrapeResults.RestaurantWebsiteURL != null)
+            {
+                <p>Visit their website <a href="@scrapeResults.RestaurantWebsiteURL" target="_blank">here</a></p>
+            }
+        }
+        else
+        {
+            <p>Looking for more restaurant information...</p>
+        }
+
+        <p>Date: <input type="date" @bind="eventDate" /></p>
+        <p>Time: <input type="time" @bind="eventTime" /></p>
+        <button @onclick="@(e => AddToCalendar())">Add to Calendar</button>
+    </div>
+}
+else
+{
+    <p>Restaurant information is missing.</p>
+}
+
+@if (isEventAdded)
+{
+    <div class="popup" style="color:black;">
+        Event added to calendar successfully!
+    </div>
+}
+
+@code {
+    [Parameter] public string name { get; set; }
+    [Parameter] public string phone { get; set; }
+    [Parameter] public string rating { get; set; }
+    [Parameter] public string imageUrl { get; set; }
+    [Parameter] public string address { get; set; }
+    [Parameter] public string categories { get; set; }
+    [Parameter] public string price { get; set; }
+    public ScrapingService.ScrapingResults? scrapeResults = null;
+    private DateTime eventDate = DateTime.Today;
+    private DateTime eventTime = DateTime.Now;
+    private bool isEventAdded = false;
+
+    private async Task AddToCalendar()
+    {
+        try
+        {
+            DateTime dateTime = eventDate.Date + eventTime.TimeOfDay;
+            await AddEventToGoogleCalendar(dateTime);
+
+            isEventAdded = true;
+            StateHasChanged(); // Trigger UI refresh
+
+            // Start timer to hide the popup after 3 seconds
+            Timer timer = new Timer(3000);
+            timer.Elapsed += (sender, e) => {
+                InvokeAsync(() => {
+                    isEventAdded = false;
+                    StateHasChanged(); // Refresh UI to hide the popup
+                });
+                timer.Stop();
+            };
+            timer.Start();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("An error occurred: " + ex.Message);
+        }
+    }
+
+    private async Task AddEventToGoogleCalendar(DateTime dateTime)
+    {
+        string[] scopes = { CalendarService.Scope.Calendar };
+        var clientSecrets = new ClientSecrets
+        {
+            ClientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID"),
+            ClientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET")
+        };
+
+        UserCredential credential = await GoogleWebAuthorizationBroker.AuthorizeAsync(
+            clientSecrets,
+            scopes,
+            "user", CancellationToken.None);
+
+        var service = new CalendarService(new BaseClientService.Initializer()
+        {
+            HttpClientInitializer = credential,
+            ApplicationName = "Your Application Name"
+        });
+
+        Event newEvent = new Event
+        {
+            Summary = name,
+            Location = address,
+            Start = new EventDateTime
+            {
+                DateTime = dateTime,
+                TimeZone = "America/New_York"
+            },
+            End = new EventDateTime
+            {
+                DateTime = dateTime.AddHours(1),
+                TimeZone = "America/New_York"
+            }
+        };
+
+        string calendarId = "primary";
+        EventsResource.InsertRequest request = service.Events.Insert(newEvent, calendarId);
+        Event createdEvent = await request.ExecuteAsync();
+        Console.WriteLine("Event created: " + createdEvent.HtmlLink);
+    }
+
+    protected async override Task OnInitializedAsync()
+    {
+        if (!UserService.IsLoggedIn) {
+            Navigation.NavigateTo("/");
+        }
+
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var queryParams = QueryHelpers.ParseQuery(uri.Query);
+        name = queryParams.TryGetValue("businessName", out var n) ? n.FirstOrDefault() : "";
+        address = queryParams.TryGetValue("address", out var a) ? a.FirstOrDefault() : "";
+        phone = queryParams.TryGetValue("phone", out var p) ? p.FirstOrDefault() : "";
+        rating = queryParams.TryGetValue("rating", out var r) ? r.FirstOrDefault() : "";
+        imageUrl = queryParams.TryGetValue("imageUrl", out var i) ? i.FirstOrDefault() : "";
+        categories = queryParams.TryGetValue("categories", out var c) ? c.FirstOrDefault() : "";
+        price = queryParams.TryGetValue("price", out var pr) ? pr.FirstOrDefault() : "";
+
+        scrapeResults = await ScrapingService.GetRestaurantUrl(name);
+    }
+}
+
+<style>
+    .popup {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: #f0f0f0;
+        padding: 20px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+</style>

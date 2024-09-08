@@ -1,0 +1,173 @@
+@page "/calendar"
+@using Google.Apis.Auth.OAuth2
+@using Google.Apis.Calendar.v3
+@using Google.Apis.Calendar.v3.Data
+@using Google.Apis.Services
+@using System.Globalization
+@using Google.Apis.Util.Store
+@inject NavigationManager Navigation
+@inject UserService UserService
+
+<link href="css/calendar.css" rel="stylesheet">
+
+<h3>Your Calendar</h3>
+<h4>@currentMonthYear</h4>  <!-- Display the current month and year -->
+
+@if (!isAuthorized)
+{
+    <button class="authorize-button" @onclick="() => CheckAuthorization(selectedYear, selectedMonth)">Authorize</button>
+}
+else if (events == null)
+{
+    <p>Loading...</p>
+}
+else
+{
+    <div style="display: flex; justify-content: center; margin: 20px;">
+        <select @onchange="OnMonthChange" style="margin-right: 10px;">
+            @for (int month = 1; month <= 12; month++)
+            {
+                <option value="@month" selected="@(month == selectedMonth)">@DateTimeFormatInfo.CurrentInfo.GetMonthName(month)</option>
+            }
+        </select>
+
+        <select @onchange="OnYearChange">
+            @for (int year = DateTime.Today.Year - 5; year <= DateTime.Today.Year + 5; year++)
+            {
+                <option value="@year" selected="@(year == selectedYear)">@year</option>
+            }
+        </select>
+    </div>
+
+    <div class="calendar-grid">
+        @for (var date = startDate; date <= endDate; date = date.AddDays(1))
+        {
+            <div class="day @(date.Date == DateTime.Today ? "today" : "")" style="border: 1px solid #ccc; padding: 10px; margin: 5px;">
+                <time>@date.ToString("dd MMM, ddd")</time> <!-- Showing date and day of the week -->
+                @if (eventsByDate.TryGetValue(date.Date, out var dayEvents))
+                {
+                    foreach (var evt in dayEvents)
+                    {
+                        <p>@evt.Summary - @evt.Start.DateTime?.ToString("HH:mm")</p>
+                    }
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private bool isAuthorized = false;
+    // Boolean flag to track if the user has authorized access to their Google Calendar.
+
+    private List<Event> events;
+    // List to store Google Calendar events.
+
+    private Dictionary<DateTime, List<Event>> eventsByDate = new();
+    // Dictionary to organize events by date for easier access in the UI.
+
+    private DateTime startDate, endDate;
+    // Variables to define the start and end dates displayed on the calendar.
+
+    private string currentMonthYear;
+    // String to display the current month and year on the UI.
+
+    private int selectedMonth = DateTime.Today.Month;
+    // Integer to store the currently selected month for the calendar view.
+
+    private int selectedYear = DateTime.Today.Year;
+    // Integer to store the currently selected year for the calendar view.
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Overridden initialization method to check user login status and fetch authorization on component load.
+        if (!UserService.IsLoggedIn) {
+            Navigation.NavigateTo("/");
+            // Redirect to login page if user is not logged in.
+        }
+
+        await CheckAuthorization(selectedYear, selectedMonth);
+        // Check if the application has authorization to access Google Calendar on initialization.
+    }
+
+    private async Task CheckAuthorization(int year, int month)
+    {
+        // Asynchronous method to check and request Google Calendar API authorization from the user.
+        try
+        {
+            // Get client credentials from environment variables.
+            string clientId = System.Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID");
+            string clientSecret = System.Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET");
+
+            // Request authorization using the client credentials.
+            UserCredential credential = await GoogleWebAuthorizationBroker.AuthorizeAsync(
+                new ClientSecrets { ClientId = clientId, ClientSecret = clientSecret },
+                new[] { CalendarService.Scope.Calendar },
+                "user", CancellationToken.None);
+
+            // Initialize the Google Calendar service with the authorized credentials.
+            var service = new CalendarService(new BaseClientService.Initializer()
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = "Your Application Name",
+            });
+
+            // Prepare to fetch calendar events for the selected month.
+            EventsResource.ListRequest request = service.Events.List("primary");
+            DateTime firstDayOfMonth = new DateTime(year, month, 1);
+            DateTime lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1);
+
+            request.TimeMin = firstDayOfMonth;
+            request.TimeMax = new DateTime(lastDayOfMonth.Year, lastDayOfMonth.Month, lastDayOfMonth.Day, 23, 59, 59);
+            request.ShowDeleted = false;
+            request.SingleEvents = true;
+            request.OrderBy = EventsResource.ListRequest.OrderByEnum.StartTime;
+
+            // Execute the request and store the events.
+            var result = await request.ExecuteAsync();
+            events = result.Items.ToList();
+            isAuthorized = true;
+
+            // Organize events by date for display and update the UI.
+            OrganizeEventsByDate();
+            CalculateMonthBounds();
+            currentMonthYear = firstDayOfMonth.ToString("MMMM yyyy");
+        }
+        catch (Exception ex)
+        {
+            // Handle exceptions such as authorization failures.
+            Console.WriteLine("Failed to retrieve calendar events: " + ex.Message);
+        }
+    }
+
+    private void OrganizeEventsByDate()
+    {
+        // Group events by their start date to facilitate rendering on the calendar.
+        eventsByDate = events
+            .Where(e => e.Start.DateTime.HasValue)
+            .GroupBy(e => e.Start.DateTime.Value.Date)
+            .ToDictionary(g => g.Key, g => g.ToList());
+    }
+
+    private void CalculateMonthBounds()
+    {
+        // Calculate the bounds of the calendar to be displayed, adjusting for start of week.
+        var currentMonthFirstDay = new DateTime(selectedYear, selectedMonth, 1);
+        startDate = currentMonthFirstDay.AddDays(-(int)currentMonthFirstDay.DayOfWeek);
+        endDate = currentMonthFirstDay.AddMonths(1).AddDays(-1);
+    }
+
+    private async Task OnMonthChange(ChangeEventArgs e)
+    {
+        // Update the selected month from the user input and refresh the authorization and calendar display.
+        selectedMonth = int.Parse(e.Value.ToString());
+        await CheckAuthorization(selectedYear, selectedMonth);
+    }
+
+    private async Task OnYearChange(ChangeEventArgs e)
+    {
+        // Update the selected year from the user input and refresh the authorization and calendar display.
+        selectedYear = int.Parse(e.Value.ToString());
+        await CheckAuthorization(selectedYear, selectedMonth);
+    }
+}

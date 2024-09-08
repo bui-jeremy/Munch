@@ -1,0 +1,94 @@
+﻿@page "/"
+@using Microsoft.AspNetCore.Components.Web
+@namespace client2.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="~/" />
+    <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" />
+    <link href="css/site.css" rel="stylesheet" />
+    <link href="client2.styles.css" rel="stylesheet" />
+    <link href="css/Profile.css" rel="stylesheet" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
+</head>
+<body>
+    <component type="typeof(App)" render-mode="ServerPrerendered" />
+
+    <div id="blazor-error-ui">
+        <environment include="Staging,Production">
+            An error has occurred. This application may no longer respond until reloaded.
+        </environment>
+        <environment include="Development">
+            An unhandled exception has occurred. See browser dev tools for details.
+        </environment>
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAHo2rjemjrU-08H1OSmNjhzTw63Dq_czM",
+            authDomain: "munch-77a3b.firebaseapp.com",
+            projectId: "munch-77a3b",
+            storageBucket: "munch-77a3b.appspot.com",
+            messagingSenderId: "804520378656",
+            appId: "1:804520378656:web:64e96b65844902b2359745",
+            measurementId: "G-7F44S2WK8Q"
+        };
+
+
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        window.firebaseAuth = {
+            signUp: async (email, password) => {
+                try {
+                    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                    console.log("User signed up:", userCredential.user);
+                    console.log(userCredential.user.uid);
+                    window.userID = userCredential.user.uid;
+                    return { success: true, user: userCredential.user };
+                } catch (error) {
+                    console.error("Signup error:", error.code, error.message);
+                    return { success: false, error: error.message };
+                }
+            },
+            logIn: async (email, password) => {
+                try {
+                    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                    console.log("User Logged in:", userCredential.user);
+                    console.log(userCredential.user.uid);
+                    window.userID = userCredential.user.uid;
+                    return { success: true, user: userCredential.user.email };
+                } catch (error) {
+                    return { success: false, error: error.message };
+                }
+            }
+        };
+
+        window.getCurrentUserId = () => window.userID
+    </script>
+    <script>
+        window.getCoords = async () => {
+            if(navigator.geolocation){
+                const pos = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject);
+                });
+                return [pos.coords.longitude, pos.coords.latitude];
+            }
+        };
+    </script>
+    <script src="_framework/blazor.server.js"></script>
+    <script src="js/site.js" type="module"></script>
+</body>
+</html>
+
